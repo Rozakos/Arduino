@@ -1,0 +1,12 @@
+import serial
+import time
+
+ser = serial.Serial('COM9', timeout=0)
+ser.baudrate = 9600
+
+# ser.write(b"\r")
+while True:
+    ser.write('s'.encode('ascii', 'ignore'))
+    output = ser.read(10000).decode('UTF-8', 'ignore')
+    time.sleep(0.1)
+    print(output)

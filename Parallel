@@ -45,7 +45,7 @@ void loop() {
     digitalWrite(LED6, LOW);
     digitalWrite(LED5, LOW);
     digitalWrite(LED4, LOW);
-    digitalWrite(LED3, LOW);μπορ
+    digitalWrite(LED3, LOW);
   }
   Serial.println(digitalValue);
   delay(100);

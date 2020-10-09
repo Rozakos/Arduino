@@ -1,0 +1,415 @@
+/*
+	1->D0 = TX					|30->VIN
+	2->D1 = Rx					|29->Gnd
+	3->Reset					|28->Reset
+	4->Gnd						|27->5V
+	5->D2 = Int0->				|26->ADC7
+	6->D3 = Int1(PWM)			|25->ADC6
+	7->D4 = IR-in				|24->ADC5 = SCL
+	8->D5 =(PWM)				|23->ADC4 = SDA
+	9->D6 =(PWM)->				|22->ADC3
+	10->D7 = LCD-D/C			|21->ADC2
+	11->D8 = LCD-Res			|20->ADC1
+	12->D9 = (PWM)LCD-SCE		|19->ADC0 = LM35
+	13->D10 = SS(PWM)->			|18->AREF
+	14->D11 = MOSI(PWM)			|17->3,3V
+	15->D12 = MISO				|16->D13 = CSK
+	
+	!a1&d&s1&c2&s3&c4&s5&c6&s7&c8$\r
+	!a1&d&s1&c2&s3&c4&s5&c6&s7&c8$\r
+    [StartMesege][ID]&[d,a]&[r,s,c,i+pin][EndMesege]
+	
+	lcd (zelen -d9-sce)(zalt-d11-in)(bial-d13-clk)(oranzav-d5-d/c)(4eren-d8-reset)
+	1-vc 2-Gnd 3-SCE 4-RES 5-D/C 6-in 7-Clk 8-Led
+	
+	int on=0
+	on = !on;
+	digitalWrite(RELAY_PIN1, on ? HIGH : LOW);
+	
+	#if defined UseDebugToSerial
+		Serial << F("") << EndLiine ;
+	#endif 
+
+// *****  *****
+
+int setInterval(long d, timer_callback f)  Call function f every d milliseconds.
+int setTimeout(long d, timer_callback f)  Call function f once after d milliseconds.
+int setTimer(long d, timer_callback f, int n)  Call function f every d milliseconds for n times.
+boolean isEnabled(int timerId)
+if(timer.isEnabled(timerId) {
+    // do domething
+}
+timer.enable(timerId); Enables the specified timer. 
+timer.disable(timerId); Disables the specified timer.
+timer.toggle(timerId); Enables the specified timer if it's currently disabled, and vice-versa. 
+timer.restartTimer(wd_timer_id);  Causes the specified timer to start counting from "now"
+deleteTimer(int timerId)  Free the specified timerId slot.
+n = timer.getNumTimers();  Return the number of used slots in a timer object. 
+*/
+
+
+//#include "Arduit.h"
+#include <Wire.h>
+#include "Arduit_DIO.h"
+//#define UseDebugToSerial  // Debug to Serial port
+#define SerialBoud 115200 // Tsxita Seriaki
+#define Delimiter '&' // Diaxoristis gia endoles
+#define EndInput '\r' // Pos tlioni i grami
+#define StartMesege '!' // Pos tlioni i grami
+#define EndMesege '$' // Pos tlioni i grami
+#define ID "a1" // ID tis siskevis
+#define EndLiine "\n\r"//"\n\r" // 
+
+
+//static const byte sensorTempPin = 0;
+//static const byte sensorLightPin = 1;
+//static const byte sensorPin = 2;
+byte analogPin[] = {A0, A1, A2, A3, A6, A7};
+
+byte index = 0;
+String masege[30]="";
+boolean getInputComplete = false;
+boolean getComand = false;
+boolean startRead = false;
+int recpin ;
+word recport ;
+int pindo ;
+int DigitalInputMemory[16] {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; 
+float AnalogInputMemory[] {0,0,0,0,0,0}; 
+
+template<class T> inline Print &operator <<(Print &obj, T arg) { obj.print(arg); return obj; }  //Print Class <<
+
+Arduit_DIO IO;
+
+void setup()
+{
+	Wire.begin(); // wake up I2C bus
+	
+	IO.initialize(); // set all registers to default
+	
+	// ***** Set all pins on chip DO to output (0) or input (1)*****
+	// ***** Set pullup for output no pullup (0) or pullup (1) *****
+	IO.portMode(0, 0b0000000000000000); 
+	//IO.portPullup(0, 0b1111111111111111);
+	//IO.portMode(1, 0b1111111111111111); 
+	//IO.portPullup(1, 0b1111111111111111);
+	//IO.portMode(2, 0b0000000000000000); 
+	//IO.portPullup(2, 0b1111111111111111);
+	//IO.portMode(3, 0b0000000000000000); 
+	//IO.portPullup(3, 0b1111111111111111);
+	IO.portMode(4, 0b1111111111111111); 
+	IO.portPullup(4, 0b1111111111111111);
+	//IO.portMode(5, 0b0000000000000000); 
+	//IO.portPullup(5, 0b1111111111111111);
+	//IO.portMode(6, 0b0000000000000000); 
+	//IO.portPullup(6, 0b1111111111111111);
+	//IO.portMode(7, 0b0000000000000000); 
+	//IO.portPullup(7, 0b1111111111111111);
+	
+	Serial.begin(SerialBoud);
+	Serial.flush();
+Serial << F("Start") << EndLiine ;
+}
+
+
+void loop()
+{
+	readAnalogAll();
+	serialEvent() ;
+	
+	if(getInputComplete == true) 
+	{			
+		prosesIniput();
+		if(getComand == true)
+		{
+			prosesComand();
+			eraseInput();
+			Serial << F("Q") << EndLiine ;
+		} 
+	}
+
+}
+
+//*************************** Serial Comunication *********************************
+
+void prosesComand()
+{
+	 if (masege[1] == "t1")
+	{
+		//float temp = (1.1 * analogRead(sensorPin) * 100.0) / 1024.0;
+		//Serial << temp << EndLiine ;
+	}
+	else if (masege[1] == "d")
+	{
+		 for (int i = 2; i <= index; i++)
+		{
+			if (masege[i].startsWith("s"))
+			{
+				pindo = masege[i].substring(1).toInt() ;
+				if (pindo == 1111 )  //setDO All
+				{
+					writePortAll(HIGH);
+				} 
+				else 
+				{
+					writePin(pindo ,HIGH );
+				}
+			}
+			if (masege[i].startsWith("c"))
+			{
+				pindo = masege[i].substring(1).toInt() ;
+				if (pindo == 0000 )
+				{
+					writePortAll(LOW);
+				} 
+				else 
+				{
+					writePin(pindo ,LOW );
+				}
+			}
+			if (masege[i].startsWith("i"))
+			{
+				pindo = masege[i].substring(1).toInt() ;
+				invertPin(pindo);
+			}
+			if (masege[i].startsWith("r"))
+			{
+				pindo = masege[i].substring(1).toInt() ;
+				if (pindo == 1111 )  //readDO All
+				{
+					readPortAll();
+				} 
+				else 
+				{
+					readPin(pindo);
+					Serial << F("Pin Read = ") << recpin << EndLiine ;
+				}
+			}
+		}
+	}
+	else if (masege[1] == "reset")
+	{
+		softReset();
+	}
+	else if (masege[1] == "l")
+	{
+		//lcdClear();
+		//lcdGotoXY(20,1);
+		
+		//lcdPrintCharString(masege[2]);
+	}
+	else if (masege[1] == "a")
+	{
+		for (int i = 2; i <= index; i++)
+		{
+			if (masege[i].startsWith("s"))
+			{
+				int pinda = masege[i].substring(1).toInt() ;
+				
+			}
+			if (masege[i].startsWith("r"))
+			{
+				int pinda = masege[i].substring(1).toInt() ;
+				if (pinda == 1111 )  //readDO All
+				{
+					for (int i = 0 ; i < 5 ; i++ )
+					{
+						Serial << F("Pin Read = ") << i << " = " << AnalogInputMemory[i] << EndLiine ;
+            
+					}
+				} 
+				else 
+				{
+					Serial << F("Pin Read = ") << AnalogInputMemory[pinda-1] << EndLiine ;
+				}
+			}
+		}
+	}
+	else
+	{
+		Serial << F("Eroor Comannd") << EndLiine ;
+	}
+	
+	eraseInput();
+}
+
+void eraseInput()
+{
+	for (int i = 0; i <= index; i++)
+	{
+		masege[i]=""; 
+	}
+	Serial.flush();
+	getInputComplete = false;
+	getComand = false;
+	startRead = false;
+	index = 0;
+}
+
+void prosesIniput()
+{
+	//printMesage();
+	if (masege[0] == ID)
+	{
+		getComand = true; 
+	}
+	else if (masege[0] == "731215")  //Codiko
+	{
+		printID();
+		eraseInput();
+	}
+	else 
+	{
+		getComand = false;
+		Serial << F("E?") << EndLiine ;
+		eraseInput();  //???
+	}
+}
+
+void getInput()
+{
+	char recieved = Serial.read();
+
+	if (recieved == StartMesege )
+	{
+		startRead = true;
+		recieved =' ';
+	}
+	
+	if (startRead == true)
+	{
+		switch (recieved) 
+		{
+			case 32 :
+		
+			break;
+			case 10 :
+		
+			break;
+			case 8 :
+				oneLess();
+			break;
+			case 127 :
+				oneLess();
+			break;
+			case Delimiter :
+				index++;
+			break;
+			case EndMesege :
+				getInputComplete = true;
+				startRead = false;
+			break;
+			case EndInput :
+				getInputComplete = true;
+				startRead = false;
+			break;
+			default:
+			
+				masege[index] += recieved;
+		}
+	}
+}
+
+void oneLess()
+{
+	int len = masege[index].length();
+	masege[index] = masege[index].substring(0, len -1);
+}
+
+void serialEvent() 
+{
+	while(Serial.available()) 
+	{
+		getInput();
+	}
+}
+
+void printMesage()
+{
+	for (int i = 0; i <= index; i++)
+	{
+		Serial << "Mesage " << i << " - " << masege[i] << EndLiine;
+	}
+}
+
+void printID()
+{
+	Serial << ID << EndLiine;
+}
+
+
+
+
+//*************************** Serial Comunication END *****************************
+
+//*************************** DIO *************************************************
+
+void invertPin(int pin)
+{
+	pin = pin -1;
+	int Stat = IO.digitalRead(pin);
+	IO.digitalWrite(pin , !Stat);
+}
+
+void writePin(int pin ,int State )
+{
+	pin = pin -1;
+	IO.digitalWrite(pin , State);
+}
+
+void readPin(int pin)
+{
+	pin = pin -1;
+	recpin = IO.digitalRead(pindo - 1);
+}
+
+void writePortAll(int State )
+{
+	if (State == HIGH)
+	{
+		for (int i = 0; i <=7; i++) 
+		{
+			IO.portWrite(i, 0b1111111111111111);
+		}
+	}
+	else if (State == LOW)
+	{
+		for (int i = 0; i <=7; i++) 
+		{
+			IO.portWrite(i, 0b0000000000000000);
+		}
+	}
+}
+
+void readPortAll()
+{
+	for (int i = 0; i <=7; i++) 
+	{
+		recport = IO.portRead(i);
+		Serial.println(recport ,HEX);
+	}
+}
+
+//*************************** DIO END *********************************************
+
+void readAnalogAll()
+{
+	for (int i = 0 ; i < 5 ; i++)
+	{
+		AnalogInputMemory[i] = analogRead(analogPin[i]);
+	}
+}
+
+
+//*************************** Comand **********************************************
+
+void softReset() 
+{
+
+	Serial << F("Reboot ...") << EndLiine ;
+	delay(2000);
+	asm volatile ("  jmp 0");
+} 
+
+
+//*************************** Comand END ******************************************

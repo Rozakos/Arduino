@@ -1,0 +1,735 @@
+
+/*
+  1->D0 = TX          |30->VIN
+  2->D1 = Rx          |29->Gnd
+  3->Reset          |28->Reset
+  4->Gnd            |27->5V
+  5->D2 = Int0->LedG      |26->ADC7
+  6->D3 = Int1        |25->ADC6
+  7->D4 = CS_IN       |24->ADC5 = SCL
+  8->D5 =(PWM)        |23->ADC4 = SDA
+  9->D6 =(PWM)->Buton1    |22->ADC3
+  10->D7 = CS_CLK       |21->ADC2
+  11->D8 = CS_LACH      |20->ADC1
+  12->D9 = (PWM)        |19->ADC0
+  13->D10 = SS(PWM)->     |18->AREF
+  14->D11 = MOSI(PWM)     |17->3,3V
+  15->D12 = MISO        |16->D13 = CSK
+  
+  
+  int on=0
+  on = !on;
+  digitalWrite(RELAY_PIN1, on ? HIGH : LOW);
+  
+  
+*/
+
+
+//#define USE_DEBUG_TO_SERIAL  
+
+//#define USE_LCD 
+
+//#define USE_IR 
+
+#define USE_Alarm
+//#define USE_Alarm_DEBUG
+
+
+#include <SPI.h>
+#include "Timer.h"
+
+
+
+
+
+
+Timer Delei1;
+
+// ***** CS CONTROL 74HC595 *****
+#define clockCS  7
+#define dataCS  4
+#define latchCS  8
+const byte numberOfCsChips = 1; // Posa Chip Select ine Default 1
+const byte maxControll = numberOfCsChips * 8;
+byte Controlldata [numberOfCsChips] = { 0 }; 
+
+byte index = 0;
+String masege[16]={};
+
+boolean getInputComplete = false;
+boolean getComand = false;
+#define Delimiter ',' // Diaxoristis gia endoles
+#define EndInput '\r' // Pos tlioni i grami
+#define ID "A123" // ID tis siskevis
+
+//Za Backspase i Delite na Rs232
+#define ONELES {int len = masege[index].length();masege[index] = masege[index].substring(0, len -1);} 
+
+
+// ***** DI CONTROL 74HC4067 *****
+const byte numberOfDIChips = 1;
+int activeChannels = numberOfDIChips * 16;
+int channel = 0;
+int pinCommon = 1; //Analog Input ADC 5(Pin ???)
+// Tesera bit za control na 74HC4067 ot parvia chip na CS CONTROL 
+int pinS0 = 1; //(Pin 15*)
+int pinS1 = 2; //(Pin 1*)
+int pinS2 = 3; //(Pin 2*)
+int pinS3 = 4; //(Pin 3*)
+
+#define LatchDOon setCS(5 , LOW); refreshControll(); // Latch DO on (Pin 4*)
+#define LatchDOoff setCS(5 , HIGH); refreshControll(); // Latch DO off (Pin 4*)
+const byte numberOfDOChips = 1; //Digital Output
+const byte maxDO = numberOfDOChips * 8;
+byte DOdata [numberOfDOChips] = { 0 };  
+
+
+static const byte sensorPin = 0;
+//static const byte ledPin = 2;
+
+
+int blinc;
+unsigned long last = millis();
+
+  #if defined USE_IR
+    #include <IRremote.h>
+    int RECV_PIN = 2;
+    IRrecv irrecv(RECV_PIN);
+    decode_results results;
+  #endif
+
+  #if defined USE_LCD
+    #include <PCD8544.h>
+    
+    // The dimensions of the LCD (in pixels)...
+    static const byte LCD_WIDTH = 84;
+    static const byte LCD_HEIGHT = 48;
+
+    // The number of lines for the temperature chart...
+    static const byte CHART_HEIGHT = 5;
+
+    // A custom "degrees" symbol...
+    static const byte DEGREES_CHAR = 1;
+    static const byte degrees_glyph[] = { 0x00, 0x07, 0x05, 0x07, 0x00 };
+
+    // A bitmap graphic (10x2) of a thermometer...
+    static const byte THERMO_WIDTH = 10;
+    static const byte THERMO_HEIGHT = 2;
+    static const byte thermometer[] = { 0x00, 0x00, 0x48, 0xfe, 0x01, 0xfe, 0x00, 0x02, 0x05, 0x02,
+                                    0x00, 0x00, 0x62, 0xff, 0xfe, 0xff, 0x60, 0x00, 0x00, 0x00};
+
+    static PCD8544 lcd(13,11,5,3,9);  //PCD8544(unsigned char sclk(7), unsigned char sdin(6),unsigned char dc(5), unsigned char reset(3),unsigned char sce(4)):
+  #endif
+  
+  #if defined USE_Alarm
+    typedef enum Alarm_State{Alarm_State_Arm,Alarm_State_Disarm,Alarm_State_Init,Alarm_State_Alarm,} AlarmState_t;
+    const char* MessagesAlarm_State[] = {"Arming","Disarming","Initialization","Alarm ON"};
+    AlarmState_t Alarm_State;
+    boolean Zone1 ,Zone2 = false;
+    #define Alarm_OnOff  6
+  #endif
+
+
+void setup() {
+
+  pinMode(clockCS, OUTPUT);
+  pinMode(dataCS, OUTPUT);
+  pinMode(latchCS, OUTPUT);
+  Serial.begin(115200);
+  Serial.println(ID);
+  Serial.flush();
+  //SPI.begin ();
+  setCS(5 , HIGH);
+  refreshControll();
+  refreshDO();
+  
+  #if defined USE_Alarm
+    Alarm_State = Alarm_State_Init;
+    pinMode(Alarm_OnOff, INPUT_PULLUP);
+  #endif
+  
+  #if defined USE_IR
+    irrecv.enableIRIn(); // Start the receiver
+  #endif
+  
+  #if defined USE_LCD
+    lcd.begin(LCD_WIDTH, LCD_HEIGHT);
+    Delei1.every(1000, printTemperToLCD);
+    // Register the custom symbol...
+    lcd.createChar(DEGREES_CHAR, degrees_glyph);
+  #endif
+  
+  //int blinc = Delei1.pulseImmediate(LedG, 5 * 1000, HIGH); // 5 Sec  | |___
+  //int blinc = Delei1.pulse(LedG, 5 * 1000, LOW); // 5 Sec  _| |____
+  
+  //pinMode(ledPin, OUTPUT);
+
+  // The internal 1.1V reference provides for better
+  // resolution from the LM35, and is also more stable
+  // when powered from either a battery or USB...
+  analogReference(INTERNAL);
+}
+
+void get_input()
+{
+  char recieved = Serial.read();
+  
+    if(recieved == 8 || recieved == 127) //backspace or delete
+    { 
+      ONELES;
+        } 
+    else if (recieved == Delimiter)
+        {   
+      index++;      
+        } 
+        else  if (recieved == EndInput)
+        { 
+      getInputComplete = true; 
+      #if defined USE_DEBUG_TO_SERIAL
+      Serial.println("Got masege");       
+      #endif  
+        } 
+        else
+    {
+            masege[index] += recieved;
+    } 
+}
+
+
+void loop() {
+
+Delei1.update();
+
+  #if defined USE_IR
+    if (irrecv.decode(&results)) {
+   
+      if (millis() - last > 250) {
+        //dump(&results); 
+    switch (results.value)
+    {
+      case 33:
+        Serial.println("Output 1");
+        invertDO (1 );
+        //refreshDO();
+      break;
+      
+      case 16417:
+        Serial.println("Output 2");
+        invertDO (2 );
+        //refreshDO();
+      break;
+      
+      case 8225:
+        Serial.println("Output 3");
+        invertDO (3 );
+        //refreshDO();
+      break;
+      
+      case 24609:
+        Serial.println("Output 4");
+        invertDO (4 );
+        //refreshDO();
+      break;
+
+      case 4129:
+        Serial.println("Output 5");
+        invertDO (5 );
+        //refreshDO();
+      break;
+
+      case 20513:
+        Serial.println("Output 6");
+        invertDO (6 );
+        //refreshDO();
+      break;
+
+      default:
+      
+      Serial.println("Out");
+    }
+          
+          
+     }   
+     last = millis();
+   refreshDO();
+     irrecv.resume(); 
+    }
+
+  #endif
+
+
+
+  if(getInputComplete) 
+  {
+    prosesInput();
+      if(getComand)
+      {
+      prosesComand();
+      }
+    eraseInput();
+    getInputComplete = false;
+  }
+
+  #if defined USE_Alarm
+      switch (Alarm_State)
+  {
+
+    case Alarm_State_Init:
+    
+      #if defined USE_Alarm_DEBUG
+      Serial.println(MessagesAlarm_State[Alarm_State]);
+      #endif
+      
+      if ( digitalRead (Alarm_OnOff) == LOW )
+      {
+        Alarm_State = Alarm_State_Disarm;
+      }
+      else
+      {
+        Alarm_State = Alarm_State_Arm;
+      }
+        
+      //delay(1000);
+      
+    break;
+
+    case Alarm_State_Disarm:
+    
+      #if defined USE_Alarm_DEBUG
+        Serial.println(MessagesAlarm_State[Alarm_State]);
+      #endif
+      
+      //Alarm_State = Alarm_State_Init;
+      
+      //delay(1000);
+      
+    break; 
+    
+    case Alarm_State_Arm:
+      
+      #if defined USE_Alarm_DEBUG
+        Serial.println(MessagesAlarm_State[Alarm_State]);
+      #endif
+      
+      //Alarm_State = Alarm_State_Init;
+      
+      //delay(1000);
+      
+    break;
+    
+    case Alarm_State_Alarm:
+
+      #if defined USE_Alarm_DEBUG
+        Serial.println(MessagesAlarm_State[Alarm_State]);
+      #endif
+      
+      //Alarm_State = Alarm_State_Init;
+      
+      delay(1000);
+    break;
+    
+    default:
+    
+    Serial.println("????");
+     
+  }
+
+  #endif
+}
+
+
+#if defined USE_Alarm
+
+#endif
+
+#if defined USE_LCD
+void printTemperToLCD()
+{
+    // Read the temperature (in celsius)...
+    //float temp = (1.1 * analogRead(sensorPin) * 100.0) / 1024.0;
+    float tOUT = analogRead(sensorPin) / 9.31;
+    // Start beyond the edge of the screen...
+    static byte xChart = LCD_WIDTH;
+
+    // Print the temperature (using the custom "degrees" symbol)...
+    lcd.setCursor(0, 0);
+    lcd.print("Temp: ");
+    lcd.print(tOUT, 1);
+    lcd.print(" \001C ");
+
+    // Draw the thermometer bitmap at the bottom left corner...
+    lcd.setCursor(0, LCD_HEIGHT/8 - THERMO_HEIGHT);
+    lcd.drawBitmap(thermometer, THERMO_WIDTH, THERMO_HEIGHT);
+
+    // Wrap the chart's current position...
+    if (xChart >= LCD_WIDTH) {
+      xChart = THERMO_WIDTH + 2;
+    }
+
+    // Update the temperature chart...  
+    lcd.setCursor(xChart, 1);
+    lcd.drawColumn(CHART_HEIGHT, map(tOUT, 0, 90, 0, CHART_HEIGHT*8));  // ...clipped to the 0-45C range.
+    lcd.drawColumn(CHART_HEIGHT, 0);         // ...with a clear marker to see the current chart position.
+  
+    xChart++;
+
+
+}
+#endif
+
+void prosesInput()
+{
+ 
+  if (masege[0] == ID)
+  {
+    #if defined USE_DEBUG_TO_SERIAL
+      Serial.println("Got ID");
+    #endif  
+    
+    getComand = true; 
+  }
+  else 
+  {
+    #if defined USE_DEBUG_TO_SERIAL
+      Serial.println("Got Free text");
+      for (int i = 0; i <= index; i++)
+      {
+        Serial.println(masege[i]);
+      }
+    #endif
+  }
+}
+
+void prosesComand()
+{
+  #if defined USE_DEBUG_TO_SERIAL
+    for (int i = 0; i <= index; i++)
+    {
+      Serial.println(masege[i]);
+    }
+  #endif
+  
+   if (masege[1] == "eho")
+  {
+    
+    Serial.println(ID); 
+    
+  }
+  
+   if (masege[1] == "t1")
+  {
+    float temp = (1.1 * analogRead(sensorPin) * 100.0) / 1024.0;
+    Serial.print(temp); 
+    Serial.println(','); 
+  }
+  
+  else if (masege[1] == "DO")
+  {
+     for (int i = 2; i <= index; i++)
+    {
+ 
+      if (masege[i].startsWith("s"))
+      {
+        int pindo = masege[i].substring(1).toInt() ;
+        
+        setDO (pindo , HIGH);
+      } 
+      if (masege[i].startsWith("c"))
+      {
+        int pindo = masege[i].substring(1).toInt() ;
+        
+        setDO (pindo , LOW);
+      }
+      if (masege[i].startsWith("i"))
+      {
+        int pindo = masege[i].substring(1).toInt() ;
+        
+        invertDO (pindo );
+      }
+      
+      #if defined USE_DEBUG_TO_SERIAL
+    
+        Serial.println(" setDO" + masege[i]); 
+    
+      #endif
+      
+    }
+
+    refreshDO();    
+
+  }   
+  else if (masege[1] == "reboot")
+  {
+    Serial.println("end");
+    softReset();
+  }
+  else if (masege[1] == "DI")
+  {
+    readAnalog ();
+  }
+  else if (masege[1] == "DA")
+  {
+    for (int i = 2; i <= index; i++)
+    {
+ 
+      if (masege[i].startsWith("s"))
+      {
+        int pinda = masege[i].substring(1).toInt() ;
+        
+        setAnalogMux (pinda , HIGH);
+        Serial.println(pinda);
+      } 
+      if (masege[i].startsWith("c"))
+      {
+        int pinda = masege[i].substring(1).toInt() ;
+        
+        setAnalogMux (pinda , LOW);
+      }
+      if (masege[i].startsWith("i"))
+      {
+        int pinda = masege[i].substring(1).toInt() ;
+        
+        invertDO (pinda );
+      }
+      
+      #if defined USE_DEBUG_TO_SERIAL
+    
+        Serial.println(" setAnalogMux" + masege[i]); 
+    
+      #endif
+      
+    }
+    
+    
+    
+    
+  }
+  
+  
+}
+   
+void serialEvent() 
+{
+    while(Serial.available()) 
+  {
+    get_input();
+  }
+}
+
+void print_menu() 
+{
+ 
+}
+
+void eraseInput()
+{
+  
+    for (int i = 0; i <= index; i++)
+  {
+    masege[i]=""; 
+  }   
+  Serial.flush();
+  
+  index = 0;
+}
+
+void softReset() 
+{
+
+  asm volatile ("  jmp 0");
+  
+} 
+
+void refreshDO()
+{
+  SPI.begin ();
+  LatchDOon
+
+    for (int i = numberOfDOChips - 1; i >= 0; i--)
+    SPI.transfer (DOdata [i]);
+    
+  LatchDOoff
+  SPI.end ();
+} 
+
+boolean getChipAndBitDO (unsigned int pinDO, int & chipDO, byte & maskDO)
+{
+  pinDO = pinDO -1;
+  
+  if (pinDO > maxDO)
+  {
+    #if defined USE_DEBUG_TO_SERIAL
+      Serial.print ("DOutut ");
+      Serial.print (pinDO);
+      Serial.println (" too high.");
+    #endif  
+    return true;  // error
+  }  
+  
+  chipDO = pinDO / 8; 
+  maskDO = 1 << (pinDO % 8);
+   
+  return false;  
+} 
+
+void setDO (const long m ,int State)
+{
+ 
+  if (m == 0 && State == HIGH)
+    {
+    for (int i = 0; i < numberOfDOChips; i++) 
+      DOdata [i] = 0xFF;
+    return;
+    } 
+    if (m == 0 && State == LOW)
+    {
+    for (int i = 0; i < numberOfDOChips; i++) 
+      DOdata [i] = 0;
+    return;
+    } 
+    
+  int chipDO;
+  byte maskDO;
+  
+  if (getChipAndBitDO (m, chipDO, maskDO))
+    return;  
+    
+
+  if (State == LOW)
+    {
+    DOdata [chipDO] &= ~ maskDO;
+    } 
+  if (State == HIGH)
+    {
+    DOdata [chipDO] |= maskDO;
+    } 
+
+} 
+
+void invertDO (const long n)
+  {
+  // zero means all
+  if (n == 0)
+    {
+    for (int i = 0; i < numberOfDOChips; i++) 
+      DOdata [i] ^= 0xFF;
+    return;
+    } // end of if zero
+    
+  int chipDO;
+  byte maskDO;
+  if (getChipAndBitDO (n, chipDO, maskDO))
+    return;  // bad number
+    
+  DOdata [chipDO] ^= maskDO;
+  }  // end of invertLED
+  
+
+void refreshControll()
+{
+  digitalWrite (latchCS, LOW);
+    for (int i = numberOfCsChips - 1; i >= 0; i--)
+    //SPI.transfer (Controlldata [i]); 
+    shiftOut(dataCS, clockCS, MSBFIRST, Controlldata [i]); 
+    //Serial.println(Controlldata[1]); 
+  digitalWrite (latchCS, HIGH);
+
+
+} 
+ 
+boolean getChipAndBitControll (unsigned int pinCS, int & chipcs, byte & maskcs)
+{
+  pinCS = pinCS -1;
+  
+  if (pinCS > maxControll)
+  {
+    #if defined USE_DEBUG_TO_SERIAL
+      Serial.print ("Controll ");
+      Serial.print (pinCS);
+      Serial.println (" too high.");
+    #endif  
+    return true;  
+  }  
+  
+  chipcs = pinCS / 8; 
+  maskcs = 1 << (pinCS % 8);
+   
+  return false;  
+} 
+
+void setCS (const long n , int State)
+{
+  
+  int chipcs;
+  byte maskcs;
+  
+  if (getChipAndBitControll (n, chipcs, maskcs))
+    return;  
+        
+  if (State == LOW)
+    {
+    Controlldata [chipcs] &= ~ maskcs;
+    } 
+  if (State == HIGH)
+    {
+    Controlldata [chipcs] |= maskcs;
+    } 
+} 
+ 
+void readAnalog () 
+{
+  
+  for (channel = 0; channel < activeChannels; channel++) 
+  {
+  
+    setCS(pinS3, (channel & 15) >> 3);  // bit 4
+    setCS(pinS2, (channel & 7) >> 2);   // bit 3
+    setCS(pinS1, (channel & 3) >> 1);   // bit 2
+    setCS(pinS0, (channel & 1));        // bit 1
+    refreshControll(); 
+  
+    Serial.print(analogRead(pinCommon), DEC);
+  
+    if(channel < (activeChannels - 1)) 
+    {
+      Serial.print(",");    
+    } 
+    else 
+    {
+    Serial.println();      
+    }
+  }
+  setCS(pinS0, LOW);  // bit 4
+  setCS(pinS1, LOW);   // bit 3
+  setCS(pinS2, LOW);   // bit 2
+  setCS(pinS3, LOW);        // bit 1
+  refreshControll(); 
+
+}
+
+void setAnalogMux (int Achannel , boolean State) 
+{
+  
+  
+  pinMode(16, OUTPUT);
+  
+    setCS(pinS3, (Achannel & 15) >> 3);  // bit 4
+    setCS(pinS2, (Achannel & 7) >> 2);   // bit 3
+    setCS(pinS1, (Achannel & 3) >> 1);   // bit 2
+    setCS(pinS0, (Achannel & 1));        // bit 1
+    refreshControll(); 
+  
+    //Serial.print(analogRead(pinCommon), DEC);
+  digitalWrite(16, State);
+    //delay(1000);
+    //digitalWrite(16, LOW);
+    //delay(1000);
+    
+  
+  setCS(pinS0, LOW);  // bit 4
+  setCS(pinS1, LOW);   // bit 3
+  setCS(pinS2, LOW);   // bit 2
+  setCS(pinS3, LOW);        // bit 1
+  refreshControll(); 
+
+}

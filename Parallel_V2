@@ -1,13 +1,21 @@
+#include <Arduino.h>
+
 
 #define Delimiter '&' // Diaxoristis gia endoles
 #define EndInput '\r' // Pos tlioni i grami
 #define StartMessage '!' // Pos tlioni i grami
 #define EndMessage '$' // Pos tlioni i grami
-#define EndLiine "\n\r"//"\n\r" // 
+#define EndLine "\n\r"//"\n\r" // 
 
 int LED12 = 12;
+int LED11 = 11;
+int LED10 = 10;
 int LED9 = 9;
+int LED8 = 8;
 int LED7 = 7;
+int LED6 = 6;
+int LED5 = 5;
+
 int timer = 1000;
 
 
@@ -19,29 +27,23 @@ boolean getInputComplete = false;
 void setup() {
   // put your setup code here, to run once:
   pinMode(LED12, OUTPUT);
+  pinMode(LED11, OUTPUT);
+  pinMode(LED10, OUTPUT);
   pinMode(LED9, OUTPUT);
+  pinMode(LED8, OUTPUT);
   pinMode(LED7, OUTPUT);
-  Serial.begin(115200);
+  pinMode(LED6, OUTPUT);
+  pinMode(LED5, OUTPUT);
+  Serial.begin(9600);
   
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-  digitalWrite(LED7, LOW);
-  delay(timer);
-  digitalWrite(LED7, LOW);
-  digitalWrite(LED9, LOW);
-  delay(timer);
-  digitalWrite(LED9, LOW);
-  digitalWrite(LED12, LOW);
-  delay(timer);
-  digitalWrite(LED12, LOW);
 }
 
 
 void getInput(){
 
   char received = Serial.read();
+  Serial.print("Message Received: ");
+  Serial.println(received, HEX);
 
   if (received == StartMessage)
   {
@@ -52,28 +54,149 @@ void getInput(){
   }
   if (startRead == true)
   {
-    switch(received)
-    {
-      case 32 :
+    Serial.println("HELLO");
+    // switch(received)
+    // {
+    //   case 32 :
   
-      break;
-      case 10 :
+    //   break;
+    //   case 10 :
   
-      break;
-      case 8:
+    //   break;
+    //   case 8:
   
-      break;
+    //   break;
   
-      case Delimiter:
-        index++;
-        break;
-      case EndMessage :
-        getInputComplete = true;
-        startRead = false;
-      break;
-      default:
-        message[index] += received;
-    }
+    //   case Delimiter:
+    //     index++;
+    //     break;
+    //   case EndMessage :
+    //     getInputComplete = true;
+    //     startRead = false;
+    //   break;
+    //   default:
+    //     message[index] += received;
+    // }
   }
   
 }
+
+
+
+
+void serial_event()
+{
+  if(Serial.available()> 0)
+  {
+    char received = Serial.read();
+    Serial.print("Message Received: ");
+    Serial.println(received, DEC);
+    getInput();
+  }
+}
+
+void loop() {
+  serial_event();
+  // put your main code here, to run repeatedly:
+  // digitalWrite(LED7, LOW);
+  // delay(timer);
+  // digitalWrite(LED7, LOW);
+  // digitalWrite(LED9, LOW);
+  // delay(timer);
+  // digitalWrite(LED9, LOW);
+  // digitalWrite(LED12, LOW);
+  // delay(timer);
+  // digitalWrite(LED12, LOW);
+}
+
+
+
+
+
+
+// #include <Arduino.h>
+
+// int PIN;
+// int LED3 = 3;
+// int LED4 = 4;
+// int LED5 = 5;
+// int LED6 = 6;
+// int LED7 = 7;
+// int LED_except_7[] = {3, 4, 5, 6};
+// int LED_except_6[] = {3, 4, 5, 7};
+// int LED_except_5[] = {3, 4, 6, 7};
+// int LED_except_4[] = {3, 5, 6, 7};
+// int LED_except_3[] = {4, 5, 6, 7};
+// int incomingByte = 0;
+// int pinCount = 4;
+// int timer = 100;
+
+
+// void setup() {
+//   // put your setup code here, to run once:
+//   pinMode(LED3, OUTPUT);
+//   pinMode(LED4, OUTPUT);
+//   pinMode(LED5, OUTPUT);
+//   pinMode(LED6, OUTPUT);
+//   pinMode(LED7, OUTPUT);
+//   for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//     pinMode(LED_except_7[thisPin], OUTPUT);
+//   }
+//   for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//     pinMode(LED_except_6[thisPin], OUTPUT);
+//   }
+//   for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//     pinMode(LED_except_5[thisPin], OUTPUT);
+//   }
+//   for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//     pinMode(LED_except_4[thisPin], OUTPUT);
+//   }
+//   for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//     pinMode(LED_except_3[thisPin], OUTPUT);
+//   }
+
+
+
+
+//   Serial.begin(9600);
+// }
+
+// void loop() {
+
+//   if (Serial.available() > 0) {
+//     incomingByte = Serial.read();
+//     Serial.print("Message received : ");
+//     Serial.println(incomingByte, DEC);
+//     if (incomingByte == 49) {
+//       digitalWrite(LED7, HIGH);
+//       for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//         digitalWrite(LED_except_7[thisPin], LOW);
+//       }
+//     }
+
+//     else if (incomingByte == 50) {
+//       digitalWrite(LED6, HIGH);
+//       for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//         digitalWrite(LED_except_6[thisPin], LOW);
+//       }
+//     }
+//     else if (incomingByte == 51) {
+//       digitalWrite(LED5, HIGH);
+//       for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//         digitalWrite(LED_except_5[thisPin], LOW);
+//       }
+//     }
+//     else if (incomingByte == 52) {
+//       digitalWrite(LED4, HIGH);
+//       for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//         digitalWrite(LED_except_4[thisPin], LOW);
+//       }
+//     }
+//     else if (incomingByte == 53) {
+//       digitalWrite(LED3, HIGH);
+//       for (int thisPin = 0; thisPin < pinCount; thisPin++) {
+//         digitalWrite(LED_except_3[thisPin], LOW);
+//       }
+//     }
+//   }
+// }

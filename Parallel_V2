@@ -10,7 +10,11 @@ int LED9 = 9;
 int LED7 = 7;
 int timer = 1000;
 
+
+byte index = 0;
+String message[30]="";
 boolean startRead = false;
+boolean getInputComplete = false;
 
 void setup() {
   // put your setup code here, to run once:
@@ -45,6 +49,31 @@ void getInput(){
     startRead = true;
     received = ' ';
     
+  }
+  if (startRead == true)
+  {
+    switch(received)
+    {
+      case 32 :
+  
+      break;
+      case 10 :
+  
+      break;
+      case 8:
+  
+      break;
+  
+      case Delimiter:
+        index++;
+        break;
+      case EndMessage :
+        getInputComplete = true;
+        startRead = false;
+      break;
+      default:
+        message[index] += received;
+    }
   }
   
 }

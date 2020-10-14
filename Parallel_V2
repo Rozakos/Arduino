@@ -1,0 +1,50 @@
+
+#define Delimiter '&' // Diaxoristis gia endoles
+#define EndInput '\r' // Pos tlioni i grami
+#define StartMessage '!' // Pos tlioni i grami
+#define EndMessage '$' // Pos tlioni i grami
+#define EndLiine "\n\r"//"\n\r" // 
+
+int LED12 = 12;
+int LED9 = 9;
+int LED7 = 7;
+int timer = 1000;
+
+boolean startRead = false;
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(LED12, OUTPUT);
+  pinMode(LED9, OUTPUT);
+  pinMode(LED7, OUTPUT);
+  Serial.begin(115200);
+  
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  digitalWrite(LED7, LOW);
+  delay(timer);
+  digitalWrite(LED7, LOW);
+  digitalWrite(LED9, LOW);
+  delay(timer);
+  digitalWrite(LED9, LOW);
+  digitalWrite(LED12, LOW);
+  delay(timer);
+  digitalWrite(LED12, LOW);
+}
+
+
+void getInput(){
+
+  char received = Serial.read();
+
+  if (received == StartMessage)
+  {
+
+    startRead = true;
+    received = ' ';
+    
+  }
+  
+}

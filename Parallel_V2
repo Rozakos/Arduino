@@ -20,9 +20,11 @@ int timer = 1000;
 
 
 byte index = 0;
-String message[30]="";
+char bit_8_array[8] = {3};
+String message[30] = "";
 boolean startRead = false;
 boolean getInputComplete = false;
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -43,40 +45,48 @@ void getInput(){
 
   char received = Serial.read();
   Serial.print("Message Received: ");
-  Serial.println(received, HEX);
+  Serial.println(received);
 
   if (received == StartMessage)
   {
 
     startRead = true;
     received = ' ';
+    Serial.println(bit_8_array[0]);
     
   }
   if (startRead == true)
   {
-    Serial.println("HELLO");
-    // switch(received)
-    // {
-    //   case 32 :
+    switch(received)
+    {
+      case char (1) :
+      Serial.println(bit_8_array);
+      for (int index = 0; index < 8; index++);{
+        if (bit_8_array[index] != 3)
+        {
+          bit_8_array[index] = 1;
+          break;         
+        }   
+        
+      }
+      case 0 :
   
-    //   break;
-    //   case 10 :
+      break;
+       
+      case 10 :
   
-    //   break;
-    //   case 8:
+      break;
   
-    //   break;
-  
-    //   case Delimiter:
-    //     index++;
-    //     break;
-    //   case EndMessage :
-    //     getInputComplete = true;
-    //     startRead = false;
-    //   break;
-    //   default:
-    //     message[index] += received;
-    // }
+      case Delimiter:
+        index++;
+        break;
+      case EndMessage :
+        getInputComplete = true;
+        startRead = false;
+      break;
+      default:
+        message[index] += received;
+    }
   }
   
 }
@@ -86,11 +96,8 @@ void getInput(){
 
 void serial_event()
 {
-  if(Serial.available()> 0)
+  if(Serial.available() > 0)
   {
-    char received = Serial.read();
-    Serial.print("Message Received: ");
-    Serial.println(received, DEC);
     getInput();
   }
 }

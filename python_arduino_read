@@ -1,12 +1,43 @@
 import serial
 import time
+serBuffer = ""
 
-ser = serial.Serial('COM9', timeout=0)
-ser.baudrate = 9600
+ser = serial.Serial('COM17', timeout=0)
+ser.baudrate = 115200
 
-# ser.write(b"\r")
-while True:
-    ser.write('s'.encode('ascii', 'ignore'))
-    output = ser.read(10000).decode('UTF-8', 'ignore')
-    time.sleep(0.1)
-    print(output)
+def readSerial():
+    # while True:
+        for i in range(10):
+            c = ser.read(1).decode('UTF-8', 'ignore')  # attempt to read a character from Serial
+            time.sleep(1)
+            print(c)
+
+            # was anything read?
+            if len(c) == 0:
+                print("FAIL")
+            else:
+                print("PASS")
+                global serBuffer
+                serBuffer = ""
+                break
+
+# ?a1&d&s1&c2&s3&c4&s5&c6&s7&c8!
+
+
+def write():
+    ser.write("\r".encode())
+    time.sleep(2)
+    for i in range(10):
+        for led in range(8):
+            led = led + 1
+            print(led)
+            ser.write(("?a1&d&s" + str(led) + "!\r").encode())
+            time.sleep(0.05)
+            ser.write(("?a1&d&c" + str(led) + "!\r").encode())
+            time.sleep(0.05)
+            data = ser.read(1000).decode("UTF-8", 'ignore')
+            print(data)
+
+# ?a1&d&s6!
+
+write()
